@@ -34,6 +34,10 @@ contract Staking is ReentrancyGuard {
      * @param _rewardPeriods number of reward periods
      */
     constructor(address _liquidityToken, address _rewardToken, uint256 _startDate, uint256 _rewardPeriods) {
+        require(_liquidityToken != address(0), 'invalid address');
+        require(_rewardToken != address(0), 'invalid address');
+        require(_rewardPeriods > 0, 'invalid rewardPeriods');
+        require(_startDate >= block.timestamp, 'invalid startDate');
         liquidityToken = _liquidityToken;
         rewardToken = _rewardToken;
         // first reward distribution is 1 week after start date
