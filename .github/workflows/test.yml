@@ -26,4 +26,4 @@ jobs:
       - name: run unit test 
         run: npm run test
       - name: run test coverage
-        run: npm run test
+        run: npm run coverage
