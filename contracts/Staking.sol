@@ -4,6 +4,7 @@ pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "hardhat/console.sol";
 
 /*
     0-1-2 ---- week 156 staking period
@@ -37,8 +38,9 @@ contract Staking is ReentrancyGuard {
         rewardToken = _rewardToken;
         // first reward distribution is 1 week after start date
         startDate = _startDate;
-        endDate = startDate + rewardPeriods * 1 weeks;
+
         rewardPeriods = _rewardPeriods;
+        endDate = startDate + _rewardPeriods * 1 weeks;
         totalScores = new uint256[](_rewardPeriods);
     }
 

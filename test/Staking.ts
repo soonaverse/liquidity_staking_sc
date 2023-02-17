@@ -3,26 +3,47 @@ import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import { expect } from "chai";
 import { ethers } from "hardhat";
 
-describe("Lock", function () {
+describe("Staking", function () {
+  let owner: any;
+  let staker1: any;
+  let staker2: any;
+  let staker3: any;
+  let staking: any
+  let liquidityToken: any;
+  let rewardToken: any;
+  let startDate: any;
+  const THREE_YEARS = 52 * 3;
+  const ONE_WEEK = 60 * 60 * 24 * 7;
   // We define a fixture to reuse the same setup in every test.
   // We use loadFixture to run this setup once, snapshot that state,
   // and reset Hardhat Network to that snapshot in every test.
-  async function deployOneYearLockFixture() {
-    const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
-    const ONE_GWEI = 1_000_000_000;
-
-    const lockedAmount = ONE_GWEI;
-    const unlockTime = (await time.latest()) + ONE_YEAR_IN_SECS;
+  async function deployStakingContract() {
 
     // Contracts are deployed using the first signer/account by default
-    const [owner, otherAccount] = await ethers.getSigners();
+    const [owner, staker1, staker2, staker3] = await ethers.getSigners();
 
-    const Lock = await ethers.getContractFactory("Lock");
-    const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
+    const Staking = await ethers.getContractFactory("Staking");
+    startDate = (await time.latest()) + 1000;
+    const Token = await ethers.getContractFactory("ERC20Mock");
+    liquidityToken = await Token.deploy('Liquidity Token', 'LTKN', owner.address, 1000000);
+    rewardToken = await Token.deploy('Reward Token', 'RTKN', owner.address, 1000000);
+    const staking = await Staking.deploy(liquidityToken.address, rewardToken.address, startDate, THREE_YEARS);
 
-    return { lock, unlockTime, lockedAmount, owner, otherAccount };
+    return staking;
   }
 
+  describe("Deployment", function () {
+    it("Should have right initialized variables ", async function () {
+      staking = await loadFixture(deployStakingContract);
+      expect(await staking.liquidityToken()).to.equal(liquidityToken.address);
+      expect(await staking.rewardToken()).to.equal(rewardToken.address);
+      expect(await staking.startDate()).to.equal(startDate);
+      expect(await staking.startDate()).to.equal(startDate);
+      expect(await staking.endDate()).to.equal(startDate + (THREE_YEARS) * ONE_WEEK);
+    })
+  });
+
+  /*
   describe("Deployment", function () {
     it("Should set the right unlockTime", async function () {
       const { lock, unlockTime } = await loadFixture(deployOneYearLockFixture);
@@ -121,4 +142,5 @@ describe("Lock", function () {
       });
     });
   });
+  */
 });
