@@ -59,11 +59,12 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
      * @param numWeeks number of weeks to stake
      */
     function stake(uint256 amount, uint256 numWeeks) external {
+        address user = msg.sender;
         // transfer liquidity tokens from msg.sender to this contract
         require(amount > 0, "amount must be > 0");
-        IERC20Upgradeable(liquidityToken).transferFrom(msg.sender, address(this), amount);
+        require(IERC20Upgradeable(liquidityToken).transferFrom(user, address(this), amount), "transfer liquidity failed");
+        require(numWeeks > 0, "numWeeks must be > 0");
         // increase reward scores for user
-        address user = msg.sender;
         uint256 currentPeriod = increaseRewardScores(user, amount, numWeeks);
         // lock liquidity token to be available for withdraw after 
         userAvailableTokens[user][currentPeriod + numWeeks] += amount;
@@ -153,11 +154,12 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
     }
     
     /**
-     * @dev get multiplier point based on number of weeks staked
-     * @param numPeriod number of weeks staked
-     * @return multiplier point
+     * @dev get score based on amount and number of weeks staked
+     * @param amount amount of liquidity tokens staked
+     * @param numWeeks number of weeks staked
+     * @return score
      */
-    function getMultiplier(uint256 numPeriod) public pure returns(uint256) {
+    function getScore(uint256 amount, uint256 numWeeks) public pure returns (uint256) {
         // Y = MX + B
         // Y = Multiplier
         // M = 1 / (52-1)
@@ -166,18 +168,7 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
         uint256 precision = 10e18;
         uint256 m = (precision / (52 -1));
         uint256 b = 2 * precision - 52 * m;
-        uint256 y = (m * numPeriod + b) / precision;
-        return y;
-    }
-    
-    /**
-     * @dev get score based on amount and number of weeks staked
-     * @param amount amount of liquidity tokens staked
-     * @param numWeeks number of weeks staked
-     * @return score
-     */
-    function getScore(uint256 amount, uint256 numWeeks) public pure returns (uint256) {
-        return amount * getMultiplier(numWeeks);
+        return amount * (m * numWeeks + b) / precision;
     }
 
     /**

@@ -36,8 +36,9 @@ describe("Staking", function () {
     staker3 = _staker3;
     Staking = await ethers.getContractFactory("Staking");
     const Token = await ethers.getContractFactory("ERC20Mock");
-    liquidityToken = await Token.deploy('Liquidity Token', 'LTKN', owner.address, 1000000);
-    rewardToken = await Token.deploy('Reward Token', 'RTKN', owner.address, 1000000);
+    liquidityToken = await Token.deploy('Liquidity Token', 'LTKN', staker1.address, ethers.utils.parseEther('1000'));
+    await liquidityToken.mint(staker2.address, ethers.utils.parseEther('1000'));
+    rewardToken = await Token.deploy('Reward Token', 'RTKN', owner.address, ethers.utils.parseEther('100'));
     implementationStaking = await Staking.deploy();
     ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
     proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
@@ -94,6 +95,7 @@ describe("Staking", function () {
       const testStaking = await ethers.getContractAt("StakingMockV2", staking.address);
       await testStaking.setNewVariable(10);
       expect(await testStaking.newVariable()).to.equal(10);
+<<<<<<< Updated upstream
       expect(await testStaking.startDate()).to.equal(startDate);
     })
 
@@ -109,100 +111,187 @@ describe("Staking", function () {
   describe("Deployment", function () {
     it("Should set the right unlockTime", async function () {
       const { lock, unlockTime } = await loadFixture(deployOneYearLockFixture);
+=======
+    })
+>>>>>>> Stashed changes
 
-      expect(await lock.unlockTime()).to.equal(unlockTime);
+    it("fail to update contract due to user not owner", async function () {
+      const StakingV2 = await ethers.getContractFactory("StakingMockV2");
+      const implementationStakingV2 = await StakingV2.deploy();
+      await expect(staking.connect(staker1).upgradeTo(implementationStakingV2.address)).to.be.rejectedWith("Ownable: caller is not the owner");
+    })
+  })
+
+  describe("Staking", function () {
+    describe("scores", function () {
+      it("Should have right scores", async function () {
+        let weeks = 52;
+        let score = 1000 * ((1 / (52 - 1)) * weeks + 2 - 52 * (1 / (52 - 1)))
+        expect(await staking.getScore(1000, weeks)).to.be.equal(score);
+
+        weeks = 1;
+        score = 1000 * ((1 / (52 - 1)) * weeks + 2 - 52 * (1 / (52 - 1)))
+        expect(await staking.getScore(1000, weeks)).to.be.equal(score);
+
+
+        weeks = 200;
+        score = 1000 * ((1 / (52 - 1)) * weeks + 2 - 52 * (1 / (52 - 1)))
+        expect(await staking.getScore(1000, weeks)).to.be.equal(parseInt(score, 10));
+
+        weeks = 100;
+        score = 1000 * ((1 / (52 - 1)) * weeks + 2 - 52 * (1 / (52 - 1)))
+        expect(await staking.getScore(1000, weeks)).to.be.equal(parseInt(score, 10));
+      });
     });
 
-    it("Should set the right owner", async function () {
-      const { lock, owner } = await loadFixture(deployOneYearLockFixture);
+    describe("validation", function () {
+      it("Validations: amount 0", async function () {
+        await expect(staking.connect(staker1).stake(0, 100)).to.be.rejectedWith("amount must be > 0");
+      })
 
-      expect(await lock.owner()).to.equal(owner.address);
-    });
+      it("Validations: amount not approved", async function () {
+      })
+      it("Validations: amount 0", async function () {
+        await expect(staking.connect(staker1).stake(0, 100)).to.be.rejectedWith("amount must be > 0");
+      })
 
-    it("Should receive and store the funds to lock", async function () {
-      const { lock, lockedAmount } = await loadFixture(
-        deployOneYearLockFixture
-      );
+      it("Validations: amount not approved", async function () {
+        await expect(staking.connect(staker1).stake(100, 100)).to.be.rejectedWith("ERC20: insufficient allowance");
+      })
 
-      expect(await ethers.provider.getBalance(lock.address)).to.equal(
-        lockedAmount
-      );
-    });
+      it("Validations: stake week not valid", async function () {
+        await liquidityToken.connect(staker1).approve(staking.address, 100);
+        await expect(staking.connect(staker1).stake(100, 0)).to.be.rejectedWith("numWeeks must be > 0");
+      })
 
-    it("Should fail if the unlockTime is not in the future", async function () {
-      // We don't use the fixture here because we want a different deployment
-      const latestTime = await time.latest();
-      const Lock = await ethers.getContractFactory("Lock");
-      await expect(Lock.deploy(latestTime, { value: 1 })).to.be.revertedWith(
-        "Unlock time should be in the future"
-      );
+      it("Validations: stake weeks passes to the end date for staking", async function () {
+        await liquidityToken.connect(staker1).approve(staking.address, 100);
+        await expect(staking.connect(staker1).stake(100, 500)).to.be.rejectedWith("Staking period exceeds reward period");
+      })
+      it("Validations: staking period ends already", async function () {
+        await liquidityToken.connect(staker1).approve(staking.address, 100);
+        await time.increaseTo(startDate + (THREE_YEARS + 1) * ONE_WEEK);
+        await expect(staking.connect(staker1).stake(100, 100)).to.be.rejectedWith("Staking has ended");
+      })
     });
   });
+  describe("staking", function () {
+    it("Should stake successfully", async function () {
+      let amount = ethers.utils.parseEther('1');
+      let weeks = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amount);
+      await staking.connect(staker1).stake(amount, weeks);
+      expect(await staking.userAvailableTokens(staker1.address, weeks)).to.be.equal(amount);
+      expect(await staking.userAvailableTokens(staker1.address, 1)).to.be.equal(0);
+      let score = await staking.getScore(amount, weeks);
+      for(let i = 0; i < weeks; i++) {
+        expect(await staking.userScoresPerPeriod(staker1.address, i)).to.be.equal(score);
+        expect(await staking.totalScores(i)).to.be.equal(score);
+      }
+    })
 
-  describe("Withdrawals", function () {
-    describe("Validations", function () {
-      it("Should revert with the right error if called too soon", async function () {
-        const { lock } = await loadFixture(deployOneYearLockFixture);
+    it("Should stake successfully multiple times", async function () {
+      let amount = ethers.utils.parseEther('1');
+      let weeks = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amount);
+      await staking.connect(staker1).stake(amount, weeks);
+      expect(await staking.userAvailableTokens(staker1.address, weeks)).to.be.equal(amount);
+      expect(await staking.userAvailableTokens(staker1.address, 1)).to.be.equal(0);
+      let score = await staking.getScore(amount, weeks);
+      for(let i = 0; i < weeks; i++) {
+        expect(await staking.userScoresPerPeriod(staker1.address, i)).to.be.equal(score);
+        expect(await staking.totalScores(i)).to.be.equal(score);
+      }
 
-        await expect(lock.withdraw()).to.be.revertedWith(
-          "You can't withdraw yet"
-        );
-      });
+      amount = ethers.utils.parseEther('2');
+      weeks = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amount);
+      await staking.connect(staker1).stake(amount, weeks);
+      expect(await staking.userAvailableTokens(staker1.address, weeks)).to.be.equal(ethers.utils.parseEther('3'));
+      score = await staking.getScore(ethers.utils.parseEther('3'), weeks);
+      for(let i = 0; i < weeks; i++) {
+        expect(await staking.userScoresPerPeriod(staker1.address, i)).to.be.equal(score);
+        expect(await staking.totalScores(i)).to.be.equal(score);
+      }
 
-      it("Should revert with the right error if called from another account", async function () {
-        const { lock, unlockTime, otherAccount } = await loadFixture(
-          deployOneYearLockFixture
-        );
+    })
 
-        // We can increase the time in Hardhat Network
-        await time.increaseTo(unlockTime);
+    it("Should stake successfully multiple times in multiple periods", async function () {
+      let amount = ethers.utils.parseEther('1');
+      let weeks = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amount);
+      await staking.connect(staker1).stake(amount, weeks);
+      expect(await staking.userAvailableTokens(staker1.address, weeks)).to.be.equal(amount);
+      expect(await staking.userAvailableTokens(staker1.address, 1)).to.be.equal(0);
+      let score = await staking.getScore(amount, weeks);
+      for(let i = 0; i < weeks; i++) {
+        expect(await staking.userScoresPerPeriod(staker1.address, i)).to.be.equal(score);
+        expect(await staking.totalScores(i)).to.be.equal(score);
+      }
 
-        // We use lock.connect() to send a transaction from another account
-        await expect(lock.connect(otherAccount).withdraw()).to.be.revertedWith(
-          "You aren't the owner"
-        );
-      });
+      // 5 weeks later
+      time.setNextBlockTimestamp(startDate + ONE_WEEK * 5);
+      await network.provider.send("evm_mine") 
 
-      it("Shouldn't fail if the unlockTime has arrived and the owner calls it", async function () {
-        const { lock, unlockTime } = await loadFixture(
-          deployOneYearLockFixture
-        );
+      amount = ethers.utils.parseEther('2');
+      weeks = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amount);
+      await staking.connect(staker1).stake(amount, weeks);
+      score = await staking.getScore(ethers.utils.parseEther('1'), weeks);
+      for(let i = 0; i < 5; i++) {
+        expect(await staking.userScoresPerPeriod(staker1.address, i)).to.be.equal(score);
+        expect(await staking.totalScores(i)).to.be.equal(score);
+      }
+      score = await staking.getScore(ethers.utils.parseEther('3'), weeks);
+      for(let i = 5; i < 52; i++) {
+        expect(await staking.userScoresPerPeriod(staker1.address, i)).to.be.equal(score);
+        expect(await staking.totalScores(i)).to.be.equal(score);
+      }
+      score = await staking.getScore(ethers.utils.parseEther('2'), weeks);
+      for(let i = 52; i < 57; i++) {
+        expect(await staking.userScoresPerPeriod(staker1.address, i)).to.be.equal(score);
+        expect(await staking.totalScores(i)).to.be.equal(score);
+      }
+    })
 
-        // Transactions are sent using the first signer by default
-        await time.increaseTo(unlockTime);
+    it("Should stake successfully multiple times in multiple periods by multiple users", async function () {
+      let amount = ethers.utils.parseEther('1');
+      let weeks = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amount);
+      await staking.connect(staker1).stake(amount, weeks);
+      expect(await staking.userAvailableTokens(staker1.address, weeks)).to.be.equal(amount);
+      expect(await staking.userAvailableTokens(staker1.address, 1)).to.be.equal(0);
+      let score = await staking.getScore(amount, weeks);
+      for(let i = 0; i < weeks; i++) {
+        expect(await staking.userScoresPerPeriod(staker1.address, i)).to.be.equal(score);
+        expect(await staking.totalScores(i)).to.be.equal(score);
+      }
 
-        await expect(lock.withdraw()).not.to.be.reverted;
-      });
-    });
+      // 5 weeks later
+      time.setNextBlockTimestamp(startDate + ONE_WEEK * 5);
+      await network.provider.send("evm_mine") 
 
-    describe("Events", function () {
-      it("Should emit an event on withdrawals", async function () {
-        const { lock, unlockTime, lockedAmount } = await loadFixture(
-          deployOneYearLockFixture
-        );
-
-        await time.increaseTo(unlockTime);
-
-        await expect(lock.withdraw())
-          .to.emit(lock, "Withdrawal")
-          .withArgs(lockedAmount, anyValue); // We accept any value as `when` arg
-      });
-    });
-
-    describe("Transfers", function () {
-      it("Should transfer the funds to the owner", async function () {
-        const { lock, unlockTime, lockedAmount, owner } = await loadFixture(
-          deployOneYearLockFixture
-        );
-
-        await time.increaseTo(unlockTime);
-
-        await expect(lock.withdraw()).to.changeEtherBalances(
-          [owner, lock],
-          [lockedAmount, -lockedAmount]
-        );
-      });
-    });
+      amount = ethers.utils.parseEther('2');
+      weeks = 52
+      await liquidityToken.connect(staker2).approve(staking.address, amount);
+      await staking.connect(staker2).stake(amount, weeks);
+      let score1 = await staking.getScore(ethers.utils.parseEther('1'), weeks);
+      for(let i = 0; i < 5; i++) {
+        expect(await staking.userScoresPerPeriod(staker1.address, i)).to.be.equal(score1);
+        expect(await staking.userScoresPerPeriod(staker2.address, i)).to.be.equal(0);
+        expect(await staking.totalScores(i)).to.be.equal(score1);
+      }
+      let score2 = await staking.getScore(ethers.utils.parseEther('2'), weeks);
+      for(let i = 5; i < 52; i++) {
+        expect(await staking.userScoresPerPeriod(staker1.address, i)).to.be.equal(score1);
+        expect(await staking.userScoresPerPeriod(staker2.address, i)).to.be.equal(score2);
+        expect(await staking.totalScores(i)).to.be.equal(score1.add(score2));
+      }
+      for(let i = 52; i < 57; i++) {
+        expect(await staking.userScoresPerPeriod(staker1.address, i)).to.be.equal(0);
+        expect(await staking.userScoresPerPeriod(staker2.address, i)).to.be.equal(score2);
+        expect(await staking.totalScores(i)).to.be.equal(score2);
+      }
+    })
   });
-  */
 });
