@@ -11,6 +11,9 @@ describe("Staking", function () {
   let Staking: any;
   let staking: any
   let liquidityToken: any;
+  let implementationStaking: any;
+  let ERC1967Proxy: any;
+  let proxyStaking: any;
   let rewardToken: any;
   let startDate: any;
   const THREE_YEARS = 52 * 3;
@@ -18,25 +21,32 @@ describe("Staking", function () {
   // We define a fixture to reuse the same setup in every test.
   // We use loadFixture to run this setup once, snapshot that state,
   // and reset Hardhat Network to that snapshot in every test.
-  async function deployStakingContract() {
+  beforeEach(async function () {
 
     startDate = 1688212800;
+    await network.provider.send("hardhat_reset")
     await network.provider.send("evm_setNextBlockTimestamp", [startDate - 10000])
     await network.provider.send("evm_mine") // this one will have 2023-07-01 12:00 AM as its timestamp, no matter what the previous block has
 
     // Contracts are deployed using the first signer/account by default
-    const [owner, staker1, staker2, staker3] = await ethers.getSigners();
-
+    const [_owner, _staker1, _staker2, _staker3] = await ethers.getSigners();
+    owner = _owner;
+    staker1 = _staker1;
+    staker2 = _staker2;
+    staker3 = _staker3;
     Staking = await ethers.getContractFactory("Staking");
     const Token = await ethers.getContractFactory("ERC20Mock");
     liquidityToken = await Token.deploy('Liquidity Token', 'LTKN', owner.address, 1000000);
     rewardToken = await Token.deploy('Reward Token', 'RTKN', owner.address, 1000000);
-    staking = await Staking.deploy(liquidityToken.address, rewardToken.address, startDate, THREE_YEARS);
-  }
+    implementationStaking = await Staking.deploy();
+    ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
+    proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
+    staking = await ethers.getContractAt("Staking", proxyStaking.address);
+    await staking.initialize(liquidityToken.address, rewardToken.address, startDate, THREE_YEARS);
+  })
 
   describe("Deployment", function () {
     it("Should have right initialized variables ", async function () {
-      await loadFixture(deployStakingContract);
       expect(await staking.liquidityToken()).to.equal(liquidityToken.address);
       expect(await staking.rewardToken()).to.equal(rewardToken.address);
       expect(await staking.startDate()).to.equal(startDate);
@@ -44,21 +54,56 @@ describe("Staking", function () {
     })
 
     it("failed to initialize staking contract with wrong liquidity address", async function () {
-      await expect(Staking.deploy(ethers.constants.AddressZero, rewardToken.address, startDate, THREE_YEARS)).to.be.revertedWith('invalid address');
+      implementationStaking = await Staking.deploy();
+      ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
+      proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
+      const testStaking = await ethers.getContractAt("Staking", proxyStaking.address);
+      await expect(testStaking.initialize(ethers.constants.AddressZero, rewardToken.address, startDate, THREE_YEARS)).to.be.revertedWith('invalid address');
     })
 
     it("failed to initialize staking contract with wrong reward address", async function () {
-      await expect(Staking.deploy(liquidityToken.address, ethers.constants.AddressZero, startDate, THREE_YEARS)).to.be.revertedWith('invalid address');
+      implementationStaking = await Staking.deploy();
+      ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
+      proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
+      const testStaking = await ethers.getContractAt("Staking", proxyStaking.address);
+      await expect(testStaking.initialize(liquidityToken.address, ethers.constants.AddressZero, startDate, THREE_YEARS)).to.be.revertedWith('invalid address');
     })
 
     it("failed to initialize staking contract with wrong rewardPeriods", async function () {
-      await expect(Staking.deploy(liquidityToken.address, rewardToken.address, startDate, 0)).to.be.revertedWith('invalid rewardPeriods');
+      implementationStaking = await Staking.deploy();
+      ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
+      proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
+      const testStaking = await ethers.getContractAt("Staking", proxyStaking.address);
+      await expect(testStaking.initialize(liquidityToken.address, rewardToken.address, startDate, 0)).to.be.revertedWith('invalid rewardPeriods');
     })
 
     it("failed to initialize staking contract with wrong startDate", async function () {
-      await expect(Staking.deploy(liquidityToken.address, rewardToken.address, 1, THREE_YEARS)).to.be.revertedWith('invalid startDate');
+      implementationStaking = await Staking.deploy();
+      ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
+      proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
+      const testStaking = await ethers.getContractAt("Staking", proxyStaking.address);
+      await expect(testStaking.initialize(liquidityToken.address, rewardToken.address, 1, THREE_YEARS)).to.be.revertedWith('invalid startDate');
     })
   });
+
+  describe("Upgradeable", function () {
+    it("update contract successfully", async function () {
+      const StakingV2 = await ethers.getContractFactory("StakingMockV2");
+      const implementationStakingV2 = await StakingV2.deploy();
+      await staking.upgradeTo(implementationStakingV2.address);
+      const testStaking = await ethers.getContractAt("StakingMockV2", staking.address);
+      await testStaking.setNewVariable(10);
+      expect(await testStaking.newVariable()).to.equal(10);
+      expect(await testStaking.startDate()).to.equal(startDate);
+    })
+
+    it("fail to update contract due to user not owner", async function () {
+      const StakingV2 = await ethers.getContractFactory("StakingMockV2");
+      const implementationStakingV2 = await StakingV2.deploy();
+      await expect(staking.connect(staker1).upgradeTo(implementationStakingV2.address)).to.be.rejectedWith("Ownable: caller is not the owner");
+    })
+
+  })
 
   /*
   describe("Deployment", function () {

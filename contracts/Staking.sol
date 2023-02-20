@@ -2,8 +2,10 @@
 
 pragma solidity ^0.8.9;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "hardhat/console.sol";
 
 /*
@@ -12,7 +14,8 @@ import "hardhat/console.sol";
             week53-54-55 -----  week 208(156+52) reward is available for withdraw
 
 */
-contract Staking is ReentrancyGuard {
+contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
+    address public owner;
     address public liquidityToken;
     address public rewardToken;
     uint256 public startDate; // start date of staking, the first reward distribution is 1 week after start date
@@ -27,13 +30,15 @@ contract Staking is ReentrancyGuard {
     mapping(address => mapping(uint256 => uint256)) public userAvailableTokens; // user available liquidity token for withdraw per period
 
     /**
-     * @dev Constructor
+     * @dev initialize
      * @param _liquidityToken address of liquidity token
      * @param _rewardToken address of reward token
      * @param _startDate start date of staking, the first reward distribution is 1 week after start date
      * @param _rewardPeriods number of reward periods
      */
-    constructor(address _liquidityToken, address _rewardToken, uint256 _startDate, uint256 _rewardPeriods) {
+    function initialize(address _liquidityToken, address _rewardToken, uint256 _startDate, uint256 _rewardPeriods) public initializer {
+        __ReentrancyGuard_init();
+        owner = msg.sender; 
         require(_liquidityToken != address(0), 'invalid address');
         require(_rewardToken != address(0), 'invalid address');
         require(_rewardPeriods > 0, 'invalid rewardPeriods');
@@ -56,7 +61,7 @@ contract Staking is ReentrancyGuard {
     function stake(uint256 amount, uint256 numWeeks) external {
         // transfer liquidity tokens from msg.sender to this contract
         require(amount > 0, "amount must be > 0");
-        IERC20(liquidityToken).transferFrom(msg.sender, address(this), amount);
+        IERC20Upgradeable(liquidityToken).transferFrom(msg.sender, address(this), amount);
         // increase reward scores for user
         address user = msg.sender;
         uint256 currentPeriod = increaseRewardScores(user, amount, numWeeks);
@@ -97,7 +102,7 @@ contract Staking is ReentrancyGuard {
         require(amount <= unlockedTokens - withdrawnLiquidityToken[msg.sender], "amount exceeds available tokens");
 
         withdrawnLiquidityToken[msg.sender] += amount;
-        IERC20(liquidityToken).transfer(msg.sender, amount);
+        IERC20Upgradeable(liquidityToken).transfer(msg.sender, amount);
 
         // emit a Withdrawn event
     }
@@ -113,7 +118,7 @@ contract Staking is ReentrancyGuard {
         require(amount <= unlockedTokens - withdrawnRewardToken[msg.sender], "amount exceeds available reward tokens");
         withdrawnRewardToken[msg.sender] += amount;
 
-        IERC20(rewardToken).transfer(msg.sender, amount);
+        IERC20Upgradeable(rewardToken).transfer(msg.sender, amount);
     }
 
     /**
@@ -208,5 +213,10 @@ contract Staking is ReentrancyGuard {
         } else {
             return (block.timestamp - startDate) / 1 weeks;
         }
+    }
+
+    // solhint-disable-next-line no-unused-vars
+    function _authorizeUpgrade(address newImplementation) internal virtual override {
+        require(owner == msg.sender, "Ownable: caller is not the owner");
     }
 }
