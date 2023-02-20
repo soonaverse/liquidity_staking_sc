@@ -95,25 +95,7 @@ describe("Staking", function () {
       const testStaking = await ethers.getContractAt("StakingMockV2", staking.address);
       await testStaking.setNewVariable(10);
       expect(await testStaking.newVariable()).to.equal(10);
-<<<<<<< Updated upstream
-      expect(await testStaking.startDate()).to.equal(startDate);
     })
-
-    it("fail to update contract due to user not owner", async function () {
-      const StakingV2 = await ethers.getContractFactory("StakingMockV2");
-      const implementationStakingV2 = await StakingV2.deploy();
-      await expect(staking.connect(staker1).upgradeTo(implementationStakingV2.address)).to.be.rejectedWith("Ownable: caller is not the owner");
-    })
-
-  })
-
-  /*
-  describe("Deployment", function () {
-    it("Should set the right unlockTime", async function () {
-      const { lock, unlockTime } = await loadFixture(deployOneYearLockFixture);
-=======
-    })
->>>>>>> Stashed changes
 
     it("fail to update contract due to user not owner", async function () {
       const StakingV2 = await ethers.getContractFactory("StakingMockV2");
@@ -145,12 +127,6 @@ describe("Staking", function () {
     });
 
     describe("validation", function () {
-      it("Validations: amount 0", async function () {
-        await expect(staking.connect(staker1).stake(0, 100)).to.be.rejectedWith("amount must be > 0");
-      })
-
-      it("Validations: amount not approved", async function () {
-      })
       it("Validations: amount 0", async function () {
         await expect(staking.connect(staker1).stake(0, 100)).to.be.rejectedWith("amount must be > 0");
       })
