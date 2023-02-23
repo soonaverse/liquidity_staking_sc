@@ -16,6 +16,8 @@ describe("Staking", function () {
   let proxyStaking: any;
   let rewardToken: any;
   let startDate: any;
+  let rewardPerPeriod: any;
+  let totalReward: any;
   const THREE_YEARS = 52 * 3;
   const ONE_WEEK = 60 * 60 * 24 * 7;
   // We define a fixture to reuse the same setup in every test.
@@ -43,7 +45,13 @@ describe("Staking", function () {
     ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
     proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
     staking = await ethers.getContractAt("Staking", proxyStaking.address);
-    await staking.initialize(liquidityToken.address, rewardToken.address, startDate, THREE_YEARS);
+    rewardPerPeriod = [];
+    for(let i = 0; i < THREE_YEARS; i++) {
+      rewardPerPeriod.push(ethers.utils.parseEther('10'));
+    }
+    await staking.initialize(liquidityToken.address, rewardToken.address, startDate, THREE_YEARS, rewardPerPeriod);
+    totalReward = ethers.utils.parseEther(10 * THREE_YEARS + '');
+    await rewardToken.mint(staking.address, totalReward)
   })
 
   describe("Deployment", function () {
@@ -59,7 +67,7 @@ describe("Staking", function () {
       ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
       proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
       const testStaking = await ethers.getContractAt("Staking", proxyStaking.address);
-      await expect(testStaking.initialize(ethers.constants.AddressZero, rewardToken.address, startDate, THREE_YEARS)).to.be.revertedWith('invalid address');
+      await expect(testStaking.initialize(ethers.constants.AddressZero, rewardToken.address, startDate, THREE_YEARS, rewardPerPeriod)).to.be.revertedWith('invalid address');
     })
 
     it("failed to initialize staking contract with wrong reward address", async function () {
@@ -67,7 +75,7 @@ describe("Staking", function () {
       ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
       proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
       const testStaking = await ethers.getContractAt("Staking", proxyStaking.address);
-      await expect(testStaking.initialize(liquidityToken.address, ethers.constants.AddressZero, startDate, THREE_YEARS)).to.be.revertedWith('invalid address');
+      await expect(testStaking.initialize(liquidityToken.address, ethers.constants.AddressZero, startDate, THREE_YEARS, rewardPerPeriod)).to.be.revertedWith('invalid address');
     })
 
     it("failed to initialize staking contract with wrong rewardPeriods", async function () {
@@ -75,7 +83,7 @@ describe("Staking", function () {
       ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
       proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
       const testStaking = await ethers.getContractAt("Staking", proxyStaking.address);
-      await expect(testStaking.initialize(liquidityToken.address, rewardToken.address, startDate, 0)).to.be.revertedWith('invalid rewardPeriods');
+      await expect(testStaking.initialize(liquidityToken.address, rewardToken.address, startDate, 0, rewardPerPeriod)).to.be.revertedWith('invalid rewardPeriods');
     })
 
     it("failed to initialize staking contract with wrong startDate", async function () {
@@ -83,7 +91,15 @@ describe("Staking", function () {
       ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
       proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
       const testStaking = await ethers.getContractAt("Staking", proxyStaking.address);
-      await expect(testStaking.initialize(liquidityToken.address, rewardToken.address, 1, THREE_YEARS)).to.be.revertedWith('invalid startDate');
+      await expect(testStaking.initialize(liquidityToken.address, rewardToken.address, 1, THREE_YEARS, rewardPerPeriod)).to.be.revertedWith('invalid startDate');
+    })
+
+    it("failed to initialize staking contract with wrong rewardToken period and reward per period list length", async function () {
+      implementationStaking = await Staking.deploy();
+      ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
+      proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
+      const testStaking = await ethers.getContractAt("Staking", proxyStaking.address);
+      await expect(testStaking.initialize(liquidityToken.address, rewardToken.address, startDate, THREE_YEARS-1, rewardPerPeriod)).to.be.revertedWith('invalid rewardPerPeriodLength');
     })
   });
 
@@ -105,6 +121,16 @@ describe("Staking", function () {
   })
 
   describe("Staking", function () {
+    it("currentPeriod", async function () {
+      expect(await staking.getCurrentPeriod()).to.equal(0);
+      await time.setNextBlockTimestamp(startDate + ONE_WEEK * 5);
+      await network.provider.send("evm_mine") 
+      expect(await staking.getCurrentPeriod()).to.equal(5);
+      await time.setNextBlockTimestamp(startDate + ONE_WEEK * 20000);
+      await network.provider.send("evm_mine") 
+      expect(await staking.getCurrentPeriod()).to.equal(THREE_YEARS);
+    })
+
     describe("scores", function () {
       it("Should have right scores", async function () {
         let weeks = 52;
@@ -206,7 +232,7 @@ describe("Staking", function () {
       }
 
       // 5 weeks later
-      time.setNextBlockTimestamp(startDate + ONE_WEEK * 5);
+      await time.setNextBlockTimestamp(startDate + ONE_WEEK * 5);
       await network.provider.send("evm_mine") 
 
       amount = ethers.utils.parseEther('2');
@@ -244,7 +270,7 @@ describe("Staking", function () {
       }
 
       // 5 weeks later
-      time.setNextBlockTimestamp(startDate + ONE_WEEK * 5);
+      await time.setNextBlockTimestamp(startDate + ONE_WEEK * 5);
       await network.provider.send("evm_mine") 
 
       amount = ethers.utils.parseEther('2');
@@ -270,4 +296,239 @@ describe("Staking", function () {
       }
     })
   });
-});
+  describe("withdraw", function () {
+    it("Should withdraw successfully", async function () {
+      let amount = ethers.utils.parseEther('1');
+      let weeks = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amount);
+      await staking.connect(staker1).stake(amount, weeks);
+      expect(await staking.userAvailableTokens(staker1.address, weeks)).to.be.equal(amount);
+      expect(await staking.userAvailableTokens(staker1.address, 1)).to.be.equal(0);
+      expect(await staking.getUnlockedLiquidityForWithdraw(staker1.address)).to.be.equal(0);
+
+      await time.setNextBlockTimestamp(startDate + ONE_WEEK * weeks);
+      await network.provider.send("evm_mine") 
+      expect(await staking.getUnlockedLiquidityForWithdraw(staker1.address)).to.be.equal(amount);
+      let previousBalance = await liquidityToken.balanceOf(staker1.address);
+      await staking.connect(staker1).withdraw(amount);
+      expect(await liquidityToken.balanceOf(staker1.address)).to.be.equal(previousBalance.add(amount));
+      expect(await staking.withdrawnLiquidityToken(staker1.address)).to.be.equal(amount);
+    });
+
+    it("Should fail if withdrawal amount not available", async function () {
+      let amount = ethers.utils.parseEther('1');
+      let weeks = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amount);
+      await staking.connect(staker1).stake(amount, weeks);
+      expect(await staking.userAvailableTokens(staker1.address, weeks)).to.be.equal(amount);
+      expect(await staking.userAvailableTokens(staker1.address, 1)).to.be.equal(0);
+      await expect(staking.connect(staker1).withdraw(amount)).to.be.revertedWith("amount exceeds available tokens");
+    });
+
+    it("Should fail if user hasn't staked", async function () {
+      let amount = ethers.utils.parseEther('1');
+      let weeks = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amount);
+      await staking.connect(staker1).stake(amount, weeks);
+      await expect(staking.connect(staker2).withdraw(amount)).to.be.revertedWith("amount exceeds available tokens");
+    });
+
+    it("Should fail if user want to withdraw 0 amount", async function () {
+      let amount = ethers.utils.parseEther('1');
+      let weeks = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amount);
+      await staking.connect(staker1).stake(amount, weeks);
+      expect(await staking.userAvailableTokens(staker1.address, weeks)).to.be.equal(amount);
+      expect(await staking.userAvailableTokens(staker1.address, 1)).to.be.equal(0);
+      expect(await staking.getUnlockedLiquidityForWithdraw(staker1.address)).to.be.equal(0);
+
+      await time.setNextBlockTimestamp(startDate + ONE_WEEK * weeks);
+      await network.provider.send("evm_mine") 
+      expect(await staking.getUnlockedLiquidityForWithdraw(staker1.address)).to.be.equal(amount);
+      let previousBalance = await liquidityToken.balanceOf(staker1.address);
+      await expect(staking.connect(staker1).withdraw(0)).to.be.revertedWith('amount must be > 0');
+    });
+
+    it("Should withdraw multiple times", async function () {
+      let amount = ethers.utils.parseEther('1');
+      let weeks = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amount);
+      await staking.connect(staker1).stake(amount, weeks);
+      expect(await staking.userAvailableTokens(staker1.address, weeks)).to.be.equal(amount);
+      expect(await staking.userAvailableTokens(staker1.address, 1)).to.be.equal(0);
+      expect(await staking.getUnlockedLiquidityForWithdraw(staker1.address)).to.be.equal(0);
+
+      await time.setNextBlockTimestamp(startDate + ONE_WEEK * weeks);
+      await network.provider.send("evm_mine") 
+      expect(await staking.getUnlockedLiquidityForWithdraw(staker1.address)).to.be.equal(amount);
+      let previousBalance = await liquidityToken.balanceOf(staker1.address);
+      await staking.connect(staker1).withdraw(amount.div(2))
+      expect(await liquidityToken.balanceOf(staker1.address)).to.be.equal(previousBalance.add(amount.div(2)));
+      await time.setNextBlockTimestamp(startDate + ONE_WEEK * (weeks + 2));
+      // get rest of the tokens
+      await staking.connect(staker1).withdraw(amount.sub(amount.div(2)));
+      expect(await liquidityToken.balanceOf(staker1.address)).to.be.equal(previousBalance.add(amount));
+      expect(await staking.withdrawnLiquidityToken(staker1.address)).to.be.equal(amount);
+    });
+  });
+
+  describe("claim", function () {
+    it("Should calculate reward correctly", async function () {
+      let amountUser1 = ethers.utils.parseEther('1');
+      let weeksUser1 = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amountUser1);
+      await staking.connect(staker1).stake(amountUser1, weeksUser1);
+
+      let amountUser2 = ethers.utils.parseEther('2');
+      let weeksUser2 = 104
+      await liquidityToken.connect(staker2).approve(staking.address, amountUser2);
+      await staking.connect(staker2).stake(amountUser2, weeksUser2);
+
+      for(let i = 0; i < weeksUser1; i++) {
+        let scoreUser1 = await staking.getScore(amountUser1, weeksUser1);
+        let scoreUser2 = await staking.getScore(amountUser2, weeksUser2);
+        let totalScore = await staking.totalScores(i);
+        expect(await staking.getRewardByPeriod(staker1.address, i)).to.be.equal(scoreUser1.mul(rewardPerPeriod[i]).div(totalScore));
+        expect(await staking.getRewardByPeriod(staker2.address, i)).to.be.equal(scoreUser2.mul(rewardPerPeriod[i]).div(totalScore));
+      }
+
+      for(let i = weeksUser1; i < weeksUser2 - weeksUser1; i++) {
+        expect(await staking.getRewardByPeriod(staker1.address, i)).to.be.equal(0);
+        expect(await staking.getRewardByPeriod(staker2.address, i)).to.be.equal(rewardPerPeriod[i]);
+      }
+
+      for(let i = weeksUser2; i < THREE_YEARS; i++) {
+        expect(await staking.getRewardByPeriod(staker1.address, i)).to.be.equal(0);
+        expect(await staking.getRewardByPeriod(staker2.address, i)).to.be.equal(0);
+      }
+    })
+
+    it("Should should calculate correct available reward", async function () {
+      let amountUser1 = ethers.utils.parseEther('1');
+      let weeksUser1 = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amountUser1);
+      await staking.connect(staker1).stake(amountUser1, weeksUser1);
+
+      let amountUser2 = ethers.utils.parseEther('2');
+      let weeksUser2 = 104
+      await liquidityToken.connect(staker2).approve(staking.address, amountUser2);
+      await staking.connect(staker2).stake(amountUser2, weeksUser2);
+
+      expect(await staking.getAvailableReward(staker1.address)).to.be.equal(0);
+      expect(await staking.getAvailableReward(staker2.address)).to.be.equal(0);
+
+      let lockTime = 52
+      let accRewardUser1 = ethers.BigNumber.from(0);
+      let accRewardUser2 = ethers.BigNumber.from(0);
+      for(let i = 0; i < weeksUser1; i++) {
+        let scoreUser1 = await staking.getScore(amountUser1, weeksUser1);
+        let scoreUser2 = await staking.getScore(amountUser2, weeksUser2);
+        let totalScore = await staking.totalScores(i);
+        await time.setNextBlockTimestamp(startDate + ONE_WEEK * (i+lockTime+1));
+        await network.provider.send("evm_mine") 
+        accRewardUser1 = accRewardUser1.add(scoreUser1.mul(rewardPerPeriod[i]).div(totalScore));
+        accRewardUser2 = accRewardUser2.add(scoreUser2.mul(rewardPerPeriod[i]).div(totalScore));
+        expect(await staking.getAvailableReward(staker1.address)).to.be.equal(accRewardUser1);
+        expect(await staking.getAvailableReward(staker2.address)).to.be.equal(accRewardUser2);
+      }
+
+      for(let i = weeksUser1; i < weeksUser2; i++) {
+        await time.setNextBlockTimestamp(startDate + ONE_WEEK * (i+lockTime+1));
+        await network.provider.send("evm_mine") 
+        accRewardUser2 = accRewardUser2.add(rewardPerPeriod[i]);
+        expect(await staking.getAvailableReward(staker1.address)).to.be.equal(accRewardUser1);
+        expect(await staking.getAvailableReward(staker2.address)).to.be.equal(accRewardUser2);
+      }
+
+      for(let i = weeksUser2; i < THREE_YEARS; i++) {
+        await time.setNextBlockTimestamp(startDate + ONE_WEEK * (i+lockTime+1));
+        await network.provider.send("evm_mine") 
+        expect(await staking.getAvailableReward(staker1.address)).to.be.equal(accRewardUser1);
+        expect(await staking.getAvailableReward(staker2.address)).to.be.equal(accRewardUser2);
+      }
+    })
+
+    it("Should claim successfully", async function () {
+      let amountUser1 = ethers.utils.parseEther('1');
+      let weeksUser1 = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amountUser1);
+      await staking.connect(staker1).stake(amountUser1, weeksUser1);
+
+      let amountUser2 = ethers.utils.parseEther('2');
+      let weeksUser2 = 104
+      await liquidityToken.connect(staker2).approve(staking.address, amountUser2);
+      await staking.connect(staker2).stake(amountUser2, weeksUser2);
+
+      let lockTime = 52
+      await time.setNextBlockTimestamp(startDate + ONE_WEEK * (THREE_YEARS+lockTime+1));
+      await network.provider.send("evm_mine") 
+      let rewardUser1 = await staking.getAvailableReward(staker1.address);
+      await staking.connect(staker1).claimReward(rewardUser1);
+      expect(await staking.getAvailableReward(staker1.address)).to.be.equal(rewardUser1);
+      expect(await staking.withdrawnRewardToken(staker1.address)).to.be.equal(rewardUser1);
+      expect(await rewardToken.balanceOf(staker1.address)).to.be.equal(rewardUser1);
+    })
+
+    it("Should be able to claim multiple times", async function () {
+      let amountUser1 = ethers.utils.parseEther('1');
+      let weeksUser1 = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amountUser1);
+      await staking.connect(staker1).stake(amountUser1, weeksUser1);
+
+      let amountUser2 = ethers.utils.parseEther('2');
+      let weeksUser2 = 104
+      await liquidityToken.connect(staker2).approve(staking.address, amountUser2);
+      await staking.connect(staker2).stake(amountUser2, weeksUser2);
+
+      let lockTime = 52
+      await time.setNextBlockTimestamp(startDate + ONE_WEEK * (THREE_YEARS+lockTime+1));
+      await network.provider.send("evm_mine") 
+      let rewardUser1 = await staking.getAvailableReward(staker1.address);
+      await staking.connect(staker1).claimReward(rewardUser1.div(2));
+      expect(await staking.getAvailableReward(staker1.address)).to.be.equal(rewardUser1);
+      expect(await staking.withdrawnRewardToken(staker1.address)).to.be.equal(rewardUser1.div(2));
+      expect(await rewardToken.balanceOf(staker1.address)).to.be.equal(rewardUser1.div(2));
+
+      await staking.connect(staker1).claimReward(rewardUser1.sub(rewardUser1.div(2)));
+      expect(await staking.getAvailableReward(staker1.address)).to.be.equal(rewardUser1);
+      expect(await staking.withdrawnRewardToken(staker1.address)).to.be.equal(rewardUser1);
+      expect(await rewardToken.balanceOf(staker1.address)).to.be.equal(rewardUser1);
+    })
+
+    it("Should fail to claim 0", async function () {
+      let amountUser1 = ethers.utils.parseEther('1');
+      let weeksUser1 = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amountUser1);
+      await staking.connect(staker1).stake(amountUser1, weeksUser1);
+
+      let amountUser2 = ethers.utils.parseEther('2');
+      let weeksUser2 = 104
+      await liquidityToken.connect(staker2).approve(staking.address, amountUser2);
+      await staking.connect(staker2).stake(amountUser2, weeksUser2);
+
+      let lockTime = 52
+      await time.setNextBlockTimestamp(startDate + ONE_WEEK * (THREE_YEARS+lockTime+1));
+      await network.provider.send("evm_mine") 
+      await expect(staking.connect(staker1).claimReward(0)).to.be.rejectedWith('amount must be > 0');
+    })
+
+    it("Should fail to claim amount bigger than available", async function () {
+      let amountUser1 = ethers.utils.parseEther('1');
+      let weeksUser1 = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amountUser1);
+      await staking.connect(staker1).stake(amountUser1, weeksUser1);
+
+      let amountUser2 = ethers.utils.parseEther('2');
+      let weeksUser2 = 104
+      await liquidityToken.connect(staker2).approve(staking.address, amountUser2);
+      await staking.connect(staker2).stake(amountUser2, weeksUser2);
+
+      let lockTime = 52
+      await time.setNextBlockTimestamp(startDate + ONE_WEEK * (THREE_YEARS+lockTime+1));
+      await network.provider.send("evm_mine") 
+      let rewardUser1 = await staking.getAvailableReward(staker1.address);
+      await staking.connect(staker1).claimReward(rewardUser1.div(2));
+      await expect(staking.connect(staker1).claimReward(rewardUser1.sub(rewardUser1.div(2)) + 1)).to.be.rejectedWith('amount exceeds available reward tokens');
+    })
+  })
+})

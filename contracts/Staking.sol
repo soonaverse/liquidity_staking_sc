@@ -6,7 +6,6 @@ import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "hardhat/console.sol";
 
 /*
     0-1-2 ---- week 156 staking period
@@ -36,13 +35,14 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
      * @param _startDate start date of staking, the first reward distribution is 1 week after start date
      * @param _rewardPeriods number of reward periods
      */
-    function initialize(address _liquidityToken, address _rewardToken, uint256 _startDate, uint256 _rewardPeriods) public initializer {
+    function initialize(address _liquidityToken, address _rewardToken, uint256 _startDate, uint256 _rewardPeriods, uint256[] memory _rewardPerPeriod) public initializer {
         __ReentrancyGuard_init();
         owner = msg.sender; 
         require(_liquidityToken != address(0), 'invalid address');
         require(_rewardToken != address(0), 'invalid address');
         require(_rewardPeriods > 0, 'invalid rewardPeriods');
         require(_startDate >= block.timestamp, 'invalid startDate');
+        require(_rewardPerPeriod.length == _rewardPeriods, 'invalid rewardPerPeriodLength');
         liquidityToken = _liquidityToken;
         rewardToken = _rewardToken;
         // first reward distribution is 1 week after start date
@@ -51,6 +51,7 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
         rewardPeriods = _rewardPeriods;
         endDate = startDate + _rewardPeriods * 1 weeks;
         totalScores = new uint256[](_rewardPeriods);
+        rewardPerPeriod = _rewardPerPeriod;
     }
 
     /**
@@ -115,7 +116,7 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
     function claimReward(uint256 amount) nonReentrant external {
         require(amount > 0, "amount must be > 0");
 
-        uint256 unlockedTokens = getUnlockedLiquidityForWithdraw(msg.sender);
+        uint256 unlockedTokens = getAvailableReward(msg.sender);
         require(amount <= unlockedTokens - withdrawnRewardToken[msg.sender], "amount exceeds available reward tokens");
         withdrawnRewardToken[msg.sender] += amount;
 

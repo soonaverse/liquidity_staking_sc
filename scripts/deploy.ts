@@ -1,18 +1,22 @@
 import { ethers } from "hardhat";
 
 async function main() {
-  const currentTimestampInSeconds = Math.round(Date.now() / 1000);
-  const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
-  const unlockTime = currentTimestampInSeconds + ONE_YEAR_IN_SECS;
-
-  const lockedAmount = ethers.utils.parseEther("1");
-
-  const Lock = await ethers.getContractFactory("Lock");
-  const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
-
-  await lock.deployed();
-
-  console.log(`Lock with 1 ETH and unlock timestamp ${unlockTime} deployed to ${lock.address}`);
+  let liquidityTokenAddress ="0x2170ed0880ac9a755fd29b2688956bd959f933f8";
+  let rewardTokenAddress ="0x2170ed0880ac9a755fd29b2688956bd959f933f8";
+  let startDate = 0; // timestamp
+  let numRewardWeeks = 156; 
+  let rewardPerPeriod = [] // 156 numbers indicates the reward per week
+  // code only for testing purpose , should be replaced by real data
+  for(let i = 0; i < 156; i++) {
+    rewardPerPeriod.push(1000);
+  }
+  let Staking = await ethers.getContractFactory("Staking");
+  let implementationStaking = await Staking.deploy();
+  let ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
+  let proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
+  let staking = await ethers.getContractAt("Staking", proxyStaking.address);
+  await staking.initialize(liquidityTokenAddress, rewardTokenAddress, startDate, numRewardWeeks, rewardPerPeriod);
+  console.log(`staking contract deployed to ${staking.address}`);
 }
 
 // We recommend this pattern to be able to use async/await everywhere
