@@ -49,7 +49,7 @@ describe("Staking", function () {
     for(let i = 0; i < THREE_YEARS; i++) {
       rewardPerPeriod.push(ethers.utils.parseEther('10'));
     }
-    await staking.initialize(liquidityToken.address, rewardToken.address, startDate, THREE_YEARS, rewardPerPeriod);
+    await staking.initialize(liquidityToken.address, rewardToken.address, startDate, THREE_YEARS, rewardPerPeriod, ONE_WEEK);
     totalReward = ethers.utils.parseEther(10 * THREE_YEARS + '');
     await rewardToken.mint(staking.address, totalReward)
   })
@@ -67,7 +67,7 @@ describe("Staking", function () {
       ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
       proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
       const testStaking = await ethers.getContractAt("Staking", proxyStaking.address);
-      await expect(testStaking.initialize(ethers.constants.AddressZero, rewardToken.address, startDate, THREE_YEARS, rewardPerPeriod)).to.be.revertedWith('invalid address');
+      await expect(testStaking.initialize(ethers.constants.AddressZero, rewardToken.address, startDate, THREE_YEARS, rewardPerPeriod, ONE_WEEK)).to.be.revertedWith('invalid address');
     })
 
     it("failed to initialize staking contract with wrong reward address", async function () {
@@ -75,7 +75,7 @@ describe("Staking", function () {
       ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
       proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
       const testStaking = await ethers.getContractAt("Staking", proxyStaking.address);
-      await expect(testStaking.initialize(liquidityToken.address, ethers.constants.AddressZero, startDate, THREE_YEARS, rewardPerPeriod)).to.be.revertedWith('invalid address');
+      await expect(testStaking.initialize(liquidityToken.address, ethers.constants.AddressZero, startDate, THREE_YEARS, rewardPerPeriod, ONE_WEEK)).to.be.revertedWith('invalid address');
     })
 
     it("failed to initialize staking contract with wrong rewardPeriods", async function () {
@@ -83,7 +83,7 @@ describe("Staking", function () {
       ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
       proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
       const testStaking = await ethers.getContractAt("Staking", proxyStaking.address);
-      await expect(testStaking.initialize(liquidityToken.address, rewardToken.address, startDate, 0, rewardPerPeriod)).to.be.revertedWith('invalid rewardPeriods');
+      await expect(testStaking.initialize(liquidityToken.address, rewardToken.address, startDate, 0, rewardPerPeriod, ONE_WEEK)).to.be.revertedWith('invalid rewardPeriods');
     })
 
     it("failed to initialize staking contract with wrong startDate", async function () {
@@ -91,7 +91,7 @@ describe("Staking", function () {
       ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
       proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
       const testStaking = await ethers.getContractAt("Staking", proxyStaking.address);
-      await expect(testStaking.initialize(liquidityToken.address, rewardToken.address, 1, THREE_YEARS, rewardPerPeriod)).to.be.revertedWith('invalid startDate');
+      await expect(testStaking.initialize(liquidityToken.address, rewardToken.address, 1, THREE_YEARS, rewardPerPeriod, ONE_WEEK)).to.be.revertedWith('invalid startDate');
     })
 
     it("failed to initialize staking contract with wrong rewardToken period and reward per period list length", async function () {
@@ -99,7 +99,15 @@ describe("Staking", function () {
       ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
       proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
       const testStaking = await ethers.getContractAt("Staking", proxyStaking.address);
-      await expect(testStaking.initialize(liquidityToken.address, rewardToken.address, startDate, THREE_YEARS-1, rewardPerPeriod)).to.be.revertedWith('invalid rewardPerPeriodLength');
+      await expect(testStaking.initialize(liquidityToken.address, rewardToken.address, startDate, THREE_YEARS-1, rewardPerPeriod, ONE_WEEK)).to.be.revertedWith('invalid rewardPerPeriodLength');
+    })
+
+    it("failed to initialize staking contract with wrong periodLength", async function () {
+      implementationStaking = await Staking.deploy();
+      ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
+      proxyStaking = await ERC1967Proxy.deploy(implementationStaking.address, "0x");
+      const testStaking = await ethers.getContractAt("Staking", proxyStaking.address);
+      await expect(testStaking.initialize(liquidityToken.address, rewardToken.address, startDate, THREE_YEARS, rewardPerPeriod, 0)).to.be.revertedWith('invalid periodLength');
     })
   });
 
@@ -163,7 +171,7 @@ describe("Staking", function () {
 
       it("Validations: stake week not valid", async function () {
         await liquidityToken.connect(staker1).approve(staking.address, 100);
-        await expect(staking.connect(staker1).stake(100, 0)).to.be.rejectedWith("numWeeks must be > 0");
+        await expect(staking.connect(staker1).stake(100, 0)).to.be.rejectedWith("numPeriods must be > 0");
       })
 
       it("Validations: stake weeks passes to the end date for staking", async function () {
