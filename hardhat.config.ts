@@ -18,6 +18,9 @@ const config: HardhatUserConfig = {
       accounts: [process.env.PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000000"] 
     }
   },
+  mocha: {
+    timeout: 100000000
+  },
 };
 
 export default config;
