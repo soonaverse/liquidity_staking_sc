@@ -184,7 +184,7 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
      * @return currentPeriod current period
      */
     function increaseRewardScores(address user, uint256 amount, uint256 numPeriods) internal returns(uint256 currentPeriod) {
-        require(block.timestamp <= endDate + periodLength, "Staking has ended");
+        require(block.timestamp <= endDate, "Staking has ended");
         if (block.timestamp >= startDate) {
             currentPeriod = getCurrentPeriod();
         }
@@ -204,7 +204,7 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
     function getCurrentPeriod() public view returns (uint256) {
         if (block.timestamp < startDate) {
             return 0;
-        } else if (block.timestamp >= endDate + periodLength){
+        } else if (block.timestamp >= endDate){
             return rewardPeriods;
         } else {
             return (block.timestamp - startDate) / periodLength;
