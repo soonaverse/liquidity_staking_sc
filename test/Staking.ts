@@ -139,6 +139,18 @@ describe("Staking", function () {
       expect(await staking.getCurrentPeriod()).to.equal(THREE_YEARS);
     })
 
+    it("currentPeriod after endDate", async function () {
+      expect(await staking.getCurrentPeriod()).to.equal(0);
+      await time.setNextBlockTimestamp(await staking.endDate());
+      await network.provider.send("evm_mine") 
+      expect(await staking.getCurrentPeriod()).to.equal(THREE_YEARS);
+
+      await time.setNextBlockTimestamp((await staking.endDate()).add(ONE_WEEK));
+      await network.provider.send("evm_mine") 
+      expect(await staking.getCurrentPeriod()).to.equal(THREE_YEARS);
+    })
+
+
     describe("scores", function () {
       it("Should have right scores", async function () {
         let weeks = 52;
@@ -302,6 +314,14 @@ describe("Staking", function () {
         expect(await staking.userScoresPerPeriod(staker2.address, i)).to.be.equal(score2);
         expect(await staking.totalScores(i)).to.be.equal(score2);
       }
+    })
+    it("Should not be able to stake after the end date", async function () { 
+      await time.setNextBlockTimestamp((await staking.endDate()).add(1));
+      await network.provider.send("evm_mine") 
+      let amount = ethers.utils.parseEther('1');
+      let weeks = 52
+      await liquidityToken.connect(staker1).approve(staking.address, amount);
+      await expect(staking.connect(staker1).stake(amount, weeks)).to.be.rejectedWith("Staking has ended");
     })
   });
   describe("withdraw", function () {
