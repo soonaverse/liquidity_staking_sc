@@ -181,10 +181,14 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
         if (block.timestamp - lockTime < startDate + periodLength) {
             return 0;
         }
-
         uint256 currentAvailableRewardPeriod = (block.timestamp -
             lockTime -
             startDate) / periodLength;
+
+        if (currentAvailableRewardPeriod > rewardPeriods) {
+            currentAvailableRewardPeriod = rewardPeriods;
+        }
+
         for (uint256 i = 0; i < currentAvailableRewardPeriod; i++) {
             availableReward += getRewardByPeriod(user, i);
         }

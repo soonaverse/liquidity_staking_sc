@@ -900,5 +900,38 @@ describe("Staking", function () {
           .claimReward(rewardUser1.sub(rewardUser1.div(2)) + 1)
       ).to.be.rejectedWith("amount exceeds available reward tokens");
     });
+
+    it.only("Should not fail to claim even if user has passed long time after the staking finished", async function () {
+      let amountUser1 = ethers.utils.parseEther("1");
+      let weeksUser1 = 52;
+      await liquidityToken
+        .connect(staker1)
+        .approve(staking.address, amountUser1);
+      await staking.connect(staker1).stake(amountUser1, weeksUser1);
+
+      let amountUser2 = ethers.utils.parseEther("2");
+      let weeksUser2 = 104;
+      await liquidityToken
+        .connect(staker2)
+        .approve(staking.address, amountUser2);
+      await staking.connect(staker2).stake(amountUser2, weeksUser2);
+
+      let lockTime = 52;
+      await time.setNextBlockTimestamp(
+        startDate + ONE_WEEK * (THREE_YEARS * 1000 + lockTime + 1) // 3000 years later
+      );
+      await network.provider.send("evm_mine");
+      let rewardUser1 = await staking.getAvailableReward(staker1.address);
+      await staking.connect(staker1).claimReward(rewardUser1);
+      expect(await staking.getAvailableReward(staker1.address)).to.be.equal(
+        rewardUser1
+      );
+      expect(await staking.withdrawnRewardToken(staker1.address)).to.be.equal(
+        rewardUser1
+      );
+      expect(await rewardToken.balanceOf(staker1.address)).to.be.equal(
+        rewardUser1
+      );
+    });
   });
 });
