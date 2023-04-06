@@ -24,8 +24,8 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
     uint256[] public rewardPerPeriod; // user scores per period
     uint256 public constant lockTime = 52 weeks; // 1 year lock time for rewardToken
     uint256 public periodLength; // should be 1 week in prod
-    mapping (address => uint256) public withdrawnLiquidityToken; // amount of liquidity tokens withdrawn by user
-    mapping (address => uint256) public withdrawnRewardToken; // amount of reward tokens withdrawn by user
+    mapping(address => uint256) public withdrawnLiquidityToken; // amount of liquidity tokens withdrawn by user
+    mapping(address => uint256) public withdrawnRewardToken; // amount of reward tokens withdrawn by user
     mapping(address => mapping(uint256 => uint256)) public userScoresPerPeriod; // user scores per period
     mapping(address => mapping(uint256 => uint256)) public userAvailableTokens; // user available liquidity token for withdraw per period
 
@@ -36,15 +36,25 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
      * @param _startDate start date of staking, the first reward distribution is 1 week after start date
      * @param _rewardPeriods number of reward periods
      */
-    function initialize(address _liquidityToken, address _rewardToken, uint256 _startDate, uint256 _rewardPeriods, uint256[] memory _rewardPerPeriod, uint256 _periodLength) public initializer {
+    function initialize(
+        address _liquidityToken,
+        address _rewardToken,
+        uint256 _startDate,
+        uint256 _rewardPeriods,
+        uint256[] memory _rewardPerPeriod,
+        uint256 _periodLength
+    ) public initializer {
         __ReentrancyGuard_init();
-        owner = msg.sender; 
-        require(_liquidityToken != address(0), 'invalid address');
-        require(_rewardToken != address(0), 'invalid address');
-        require(_rewardPeriods > 0, 'invalid rewardPeriods');
-        require(_startDate >= block.timestamp, 'invalid startDate');
-        require(_rewardPerPeriod.length == _rewardPeriods, 'invalid rewardPerPeriodLength');
-        require(_periodLength > 0, 'invalid periodLength');
+        owner = msg.sender;
+        require(_liquidityToken != address(0), "invalid address");
+        require(_rewardToken != address(0), "invalid address");
+        require(_rewardPeriods > 0, "invalid rewardPeriods");
+        require(_startDate >= block.timestamp, "invalid startDate");
+        require(
+            _rewardPerPeriod.length == _rewardPeriods,
+            "invalid rewardPerPeriodLength"
+        );
+        require(_periodLength > 0, "invalid periodLength");
 
         liquidityToken = _liquidityToken;
         rewardToken = _rewardToken;
@@ -67,21 +77,30 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
         address user = msg.sender;
         // transfer liquidity tokens from msg.sender to this contract
         require(amount > 0, "amount must be > 0");
-        require(IERC20Upgradeable(liquidityToken).transferFrom(user, address(this), amount), "transfer liquidity failed");
+        require(
+            IERC20Upgradeable(liquidityToken).transferFrom(
+                user,
+                address(this),
+                amount
+            ),
+            "transfer liquidity failed"
+        );
         require(numPeriods > 0, "numPeriods must be > 0");
         // increase reward scores for user
         uint256 currentPeriod = increaseRewardScores(user, amount, numPeriods);
-        // lock liquidity token to be available for withdraw after 
+        // lock liquidity token to be available for withdraw after
         userAvailableTokens[user][currentPeriod + numPeriods] += amount;
         // emit a Staked event
     }
 
-    /** 
+    /**
      * @dev withdraw liquidity tokens, only available after lockTime
      * @param user address of user
      * @return availableTokens amount of liquidity tokens available for withdraw
      */
-    function getUnlockedLiquidityForWithdraw(address user) public view returns(uint256 availableTokens) {
+    function getUnlockedLiquidityForWithdraw(
+        address user
+    ) public view returns (uint256 availableTokens) {
         if (block.timestamp < startDate) {
             return 0;
         }
@@ -101,11 +120,14 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
      * @param amount amount of liquidity tokens to withdraw
      */
 
-    function withdraw(uint256 amount) nonReentrant external {
+    function withdraw(uint256 amount) external nonReentrant {
         // transfer liquidity tokens from this contract to msg.sender
         require(amount > 0, "amount must be > 0");
         uint256 unlockedTokens = getUnlockedLiquidityForWithdraw(msg.sender);
-        require(amount <= unlockedTokens - withdrawnLiquidityToken[msg.sender], "amount exceeds available tokens");
+        require(
+            amount <= unlockedTokens - withdrawnLiquidityToken[msg.sender],
+            "amount exceeds available tokens"
+        );
 
         withdrawnLiquidityToken[msg.sender] += amount;
         IERC20Upgradeable(liquidityToken).transfer(msg.sender, amount);
@@ -117,11 +139,14 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
      * @dev claim reward tokens, only available after locktime
      * @param amount amount of reward tokens to claim
      */
-    function claimReward(uint256 amount) nonReentrant external {
+    function claimReward(uint256 amount) external nonReentrant {
         require(amount > 0, "amount must be > 0");
 
         uint256 unlockedTokens = getAvailableReward(msg.sender);
-        require(amount <= unlockedTokens - withdrawnRewardToken[msg.sender], "amount exceeds available reward tokens");
+        require(
+            amount <= unlockedTokens - withdrawnRewardToken[msg.sender],
+            "amount exceeds available reward tokens"
+        );
         withdrawnRewardToken[msg.sender] += amount;
 
         IERC20Upgradeable(rewardToken).transfer(msg.sender, amount);
@@ -133,12 +158,15 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
      * @param period period
      * @return reward number of reward tokens for user
      */
-    function getRewardByPeriod(address user, uint256 period) public view returns(uint256 reward) {
+    function getRewardByPeriod(
+        address user,
+        uint256 period
+    ) public view returns (uint256 reward) {
         uint256 score = userScoresPerPeriod[user][period];
         if (score == 0) {
             return 0;
         }
-        return score * rewardPerPeriod[period] / totalScores[period];
+        return (score * rewardPerPeriod[period]) / totalScores[period];
     }
 
     /**
@@ -146,34 +174,45 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
      * @param user address of user
      * @return availableReward number of reward tokens available for user
      */
-    function getAvailableReward(address user) public view returns(uint256 availableReward) {
+    function getAvailableReward(
+        address user
+    ) public view returns (uint256 availableReward) {
         // current time is at least 52 weeks(reward lock time) after the first reward distribution date
         if (block.timestamp - lockTime < startDate + periodLength) {
             return 0;
         }
+        uint256 currentAvailableRewardPeriod = (block.timestamp -
+            lockTime -
+            startDate) / periodLength;
 
-        uint256 currentAvailableRewardPeriod = (block.timestamp - lockTime - startDate) / periodLength;
+        if (currentAvailableRewardPeriod > rewardPeriods) {
+            currentAvailableRewardPeriod = rewardPeriods;
+        }
+
         for (uint256 i = 0; i < currentAvailableRewardPeriod; i++) {
             availableReward += getRewardByPeriod(user, i);
         }
     }
-    
+
     /**
      * @dev get score based on amount and number of weeks staked
      * @param amount amount of liquidity tokens staked
      * @param numPeriods number of weeks staked
      * @return score
      */
-    function getScore(uint256 amount, uint256 numPeriods) public pure returns (uint256) {
+    function getScore(
+        uint256 amount,
+        uint256 numPeriods
+    ) public pure returns (uint256) {
         // Y = MX + B
         // Y = Multiplier
         // M = 1 / (52-1)
         // X = weeks staked/locked
         // B = 2 - M * 52
         uint256 precision = 10e18;
-        uint256 m = (precision / (52 -1));
+        uint256 m = (precision / (52 - 1));
         uint256 b = 2 * precision - 52 * m;
-        return amount * (m * numPeriods + b) / precision;
+        return (amount * (m * numPeriods + b)) / precision;
     }
 
     /**
@@ -183,13 +222,18 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
      * @param numPeriods number of weeks staked
      * @return currentPeriod current period
      */
-    function increaseRewardScores(address user, uint256 amount, uint256 numPeriods) internal returns(uint256 currentPeriod) {
+    function increaseRewardScores(
+        address user,
+        uint256 amount,
+        uint256 numPeriods
+    ) internal returns (uint256 currentPeriod) {
         require(block.timestamp <= endDate, "Staking has ended");
-        if (block.timestamp >= startDate) {
-            currentPeriod = getCurrentPeriod();
-        }
+        currentPeriod = getCurrentPeriod();
 
-        require(currentPeriod + numPeriods <= rewardPeriods, "Staking period exceeds reward period");
+        require(
+            currentPeriod + numPeriods <= rewardPeriods,
+            "Staking period exceeds reward period"
+        );
         uint256 score = getScore(amount, numPeriods);
         for (uint256 i = 0; i < numPeriods; i++) {
             totalScores[currentPeriod + i] += score;
@@ -198,13 +242,12 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
     }
 
     /*
-    * @dev get current period, before start date + periodLength is 0
-    * @return currentPeriod current period
-    */
+     * @dev get current period, before start date + periodLength is 0
+     * @return currentPeriod current period
+     */
     function getCurrentPeriod() public view returns (uint256) {
-        if (block.timestamp < startDate) {
-            return 0;
-        } else if (block.timestamp >= endDate){
+        require(block.timestamp >= startDate, "Staking not started");
+        if (block.timestamp >= endDate) {
             return rewardPeriods;
         } else {
             return (block.timestamp - startDate) / periodLength;
@@ -212,7 +255,9 @@ contract Staking is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
     }
 
     // solhint-disable-next-line no-unused-vars
-    function _authorizeUpgrade(address newImplementation) internal virtual override {
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal virtual override {
         require(owner == msg.sender, "Ownable: caller is not the owner");
     }
 }
